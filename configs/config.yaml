@@ -1,0 +1,21 @@
+project:
+  name: "mlops_recommendation_system"
+  version: "1.0.0"
+
+data:
+  raw_data_path: "data/raw/online_course_recommendation_v2.xlsx"
+  processed_data_path: "data/processed/cleaned_recommend_data.csv"
+  engineered_Data_path: "data/processed/engineered_recommend_data.csv"
+  minimum_allowed_null_values: 50
+
+handle_missing_values:
+  columns_for_mean: ['course_duration_hours','enrollment_numbers','course_price']
+  columns_for_median: ['rating','feedback_score','time_spent_hours','previous_courses_taken']
+
+
+model:
+  save_path: "models/best_model.pkl"
+
+mlflow:
+  experiment_name: "Course_Recommendation_System"
+  tracking_uri: "http://localhost:500"
