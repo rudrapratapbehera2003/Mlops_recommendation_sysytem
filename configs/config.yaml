@@ -5,7 +5,8 @@ project:
 data:
   raw_data_path: "data/raw/online_course_recommendation_v2.xlsx"
   processed_data_path: "data/processed/cleaned_recommend_data.csv"
-  engineered_Data_path: "data/processed/engineered_recommend_data.csv"
+  engineered_data_path: "data/processed/engineered_recommend_data.csv"
+  target_col: "rating"
   minimum_allowed_null_values: 50
 
 handle_missing_values:
@@ -15,6 +16,9 @@ handle_missing_values:
 
 model:
   save_path: "models/best_model.pkl"
+  cf_model:
+    
+
 
 mlflow:
   experiment_name: "Course_Recommendation_System"

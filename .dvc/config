@@ -1,0 +1,8 @@
+[core]
+    remote = origin
+['remote "origin"']
+    url = https://dagshub.com/rpbehera167/Mlops_recommendation_sysytem.dvc
+    user = rpbehera167
+    read_timeout = 600
+    connect_timeout = 600
+    jobs = 2
