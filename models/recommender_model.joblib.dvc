@@ -1,0 +1,5 @@
+outs:
+- md5: 62f20be45a12ad61394816a8add1eee4
+  size: 46124850
+  hash: md5
+  path: recommender_model.joblib
