@@ -19,7 +19,7 @@ class FeatureEnginner:
         self.config = config
         self.processed_path = self.config.get("data.processed_data_path")
         self.feature_output_path = self.config.get(
-            "data.engineered_data_path", "data/processed/engineered_features.csv"
+            "data.engineered_data_path", "data/processed/engineered_recommend_data.csv"
         )
         
     def load_cleaned_datset(self) -> pd.DataFrame:

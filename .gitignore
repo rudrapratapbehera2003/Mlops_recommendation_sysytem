@@ -30,3 +30,7 @@ data/
 .DS_Store
 /artifacts
 /data
+
+# MLflow local tracking logs and artifacts
+mlruns/
+mlartifacts/

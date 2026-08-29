@@ -15,8 +15,18 @@ handle_missing_values:
 
 
 model:
-  save_path: "models/best_model.pkl"
+  save_path: "models/recommender_model.joblib"
   cf_model:
+    index: "user_id"
+    columns: "course_id"
+    values: "rating"
+    n_components: 100
+    random_state: 42
+  random_regressor_model:
+    n_estimators: 150
+    max_depth: 15
+    random_state: 42
+    n_jobs: 1
     
 
 
