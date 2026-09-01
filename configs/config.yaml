@@ -1,6 +1,7 @@
 project:
   name: "mlops_recommendation_system"
   version: "1.0.0"
+  environment: ${PROJECT_ENV:dev}
 
 data:
   raw_data_path: "data/raw/online_course_recommendation_v2.xlsx"
@@ -13,23 +14,24 @@ handle_missing_values:
   columns_for_mean: ['course_duration_hours','enrollment_numbers','course_price']
   columns_for_median: ['rating','feedback_score','time_spent_hours','previous_courses_taken']
 
-
 model:
   save_path: "models/recommender_model.joblib"
   cf_model:
     index: "user_id"
     columns: "course_id"
     values: "rating"
-    n_components: 100
+    n_components: 50
     random_state: 42
+    max_rows: 2500
   random_regressor_model:
     n_estimators: 150
     max_depth: 15
     random_state: 42
     n_jobs: 1
-    
-
 
 mlflow:
-  experiment_name: "Course_Recommendation_System"
-  tracking_uri: "http://localhost:500"
+  tracking_uri: ${MLFLOW_TRACKING_URI:http://localhost:5000}
+  experiment_name: ${MLFLOW_EXPERIMENT_NAME:course_recommendation.dev}
+  artifact_uri: ${MLFLOW_ARTIFACT_URI:./mlartifacts}
+  model_registry_name: ${MLFLOW_MODEL_REGISTRY_NAME:course_recommendation}
+  model_stage: ${MLFLOW_MODEL_STAGE:Staging}

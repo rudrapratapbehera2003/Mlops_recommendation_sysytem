@@ -1,0 +1,86 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: course-recommendation-api
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      PROJECT_ENV: ${PROJECT_ENV}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI_DOCKER}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME}
+      MLFLOW_ARTIFACT_URI: ${MLFLOW_ARTIFACT_URI}
+      GIT_PYTHON_REFRESH: quiet
+    depends_on:
+      - mlflow
+    volumes:
+      - .:/app
+    mem_limit: 4g
+    memswap_limit: 4g
+    command: python -m uvicorn src.api.main:app --host ${APP_HOST:-0.0.0.0} --port 8000
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.14.0
+    container_name: course-recommendation-mlflow
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI_DOCKER}
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlartifacts/mlflow.db
+      --default-artifact-root /mlartifacts
+    volumes:
+      - ./mlartifacts:/mlartifacts
+
+  airflow-webserver:
+    image: apache/airflow:2.9.1-python3.11
+    container_name: course-recommendation-airflow-webserver
+    env_file:
+      - .env
+    depends_on:
+      - mlflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+      AIRFLOW__CORE__LOAD_EXAMPLES: ${AIRFLOW__CORE__LOAD_EXAMPLES}
+      AIRFLOW__CORE__DAGS_FOLDER: ${AIRFLOW__CORE__DAGS_FOLDER}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      PYTHONPATH: ${PYTHONPATH}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/db:/opt/airflow
+      - .:/opt/airflow/project
+    ports:
+      - "8080:8080"
+    entrypoint: /bin/bash
+    command: -c "airflow db init && exec airflow webserver"
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.1-python3.11
+    container_name: course-recommendation-airflow-scheduler
+    env_file:
+      - .env
+    depends_on:
+      - airflow-webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+      AIRFLOW__CORE__LOAD_EXAMPLES: ${AIRFLOW__CORE__LOAD_EXAMPLES}
+      AIRFLOW__CORE__DAGS_FOLDER: ${AIRFLOW__CORE__DAGS_FOLDER}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      PYTHONPATH: ${PYTHONPATH}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/db:/opt/airflow
+      - .:/opt/airflow/project
+    command: scheduler

@@ -30,29 +30,49 @@ class ModelTraining:
         self.cf_values = self.config.get("model.cf_model.values","rating")
         self.cf_n_components = self.config.get("model.cf_model.n_components", 100)
         self.cf_random_state = self.config.get("model.cf_model.random_state", 42)
+        self.cf_max_rows = self.config.get("model.cf_model.max_rows", 10000)
         #CBF - Random Forest Model Parameters
         self.cbf_n_estimators = self.config.get("model.random_regressor_model.n_estimators", 150)
         self.cbf_max_depth = self.config.get("model.random_regressor_model.max_depth", 15)
         self.cbf_random_state = self.config.get("model.random_regressor_model.random_state", 42)
         self.cbf_n_jobs = self.config.get("model.random_regressor_model.n_jobs", 1)
         # Mlflow tracking uri
-        self.mlflow_tracking_uri = self.config.get("mlflow.tracking_uri", None)
-        self.mlflow_experiment = self.config.get("mlflow.experiment_name","Course_Recommendation_System")
-        
-        
+        self.mlflow_tracking_uri = self.config.get(
+            "mlflow.tracking_uri",
+            os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+        )
+        self.mlflow_artifact_uri = self.config.get(
+            "mlflow.artifact_uri",
+            os.getenv("MLFLOW_ARTIFACT_URI", "./mlartifacts")
+        )
+        self.mlflow_experiment = self.config.get(
+            "mlflow.experiment_name",
+            os.getenv("MLFLOW_EXPERIMENT_NAME", "course_recommendation.dev")
+        )
+
     def implementing_cf_model(self, train_df:pd.DataFrame):
         logger.info("Starting the implementation of colaborative filtering model...")
         
+        # Sample if dataset is too large to avoid OOM
+        original_len = len(train_df)
+        if original_len > self.cf_max_rows:
+            logger.info(f"Downsampling dataset from {original_len} to {self.cf_max_rows} rows for CF model")
+            train_df = train_df.sample(n=self.cf_max_rows, random_state=self.cf_random_state)
+        
+        logger.info(f"Creating pivot table with {len(train_df)} rows...")
         pivot = train_df.pivot_table(
             index=self.cf_index,
             columns=self.cf_column,
             values=self.cf_values
         )
+        logger.info(f"Pivot table shape: {pivot.shape}")
         if pivot.empty:
             logger.error("Collaborative filtering matrix is empty.")
             raise ValueError("Collaborative filer matrix is empty.")
         
+        logger.info("Computing user means...")
         user_means = pivot.mean(axis=1)
+        logger.info("Centering pivot matrix...")
         pivot_centered = pivot.sub(user_means,axis=0).fillna(0)
         
         n_components = min(
@@ -60,18 +80,22 @@ class ModelTraining:
             pivot_centered.shape[0] - 1,
             pivot_centered.shape[1] -1 
         )
+        logger.info(f"Using n_components={n_components} for SVD")
         
         if n_components < 1:
             logger.error("Not enought uses or courses for TruncatedSVD.")
             raise ValueError("Not enought uses or courses for TruncatedSVD.")
         
-        
-        svd  = TruncatedSVD(n_components=n_components, random_state=self.cf_random_state)
-        
+        logger.info(f"Fitting TruncatedSVD with {n_components} components...")
+        svd  = TruncatedSVD(n_components=n_components, random_state=self.cf_random_state, n_iter=100)
+        logger.info("Starting SVD fit_transform...")
         latent = svd.fit_transform(pivot_centered)
+        logger.info(f"SVD complete. Latent shape: {latent.shape}")
         
+        logger.info("Reconstructing matrix...")
         reconstructed = np.dot(latent, svd.components_)
         
+        logger.info("Creating prediction matrix...")
         pred_matrix = pd.DataFrame(
             reconstructed,
             index=pivot.index,
@@ -98,6 +122,7 @@ class ModelTraining:
         
         if eval_df.empty:
             logger.error("No common users/courses found between train and test data.")
+            return 0.0, 0.0
         
         user_indices = pred_matrix.index.get_indexer(eval_df[self.cf_index])
         course_indices = pred_matrix.columns.get_indexer(eval_df[self.cf_column])
@@ -150,6 +175,34 @@ class ModelTraining:
         joblib.dump(model_bundle, model_path)
         
         return model_path
+
+    def _register_model_version(self, model_name: str, model_uri: str, run_id: str, stage: str = "Staging"):
+        client = MlflowClient()
+
+        try:
+            registered_model = client.get_registered_model(model_name)
+        except mlflow.exceptions.RestException:
+            client.create_registered_model(model_name)
+
+        model_version = client.create_model_version(
+            name=model_name,
+            source=model_uri,
+            run_id=run_id,
+        )
+
+        client.transition_model_version_stage(
+            name=model_name,
+            version=model_version.version,
+            stage=stage,
+        )
+
+        return {
+            "name": model_name,
+            "version": model_version.version,
+            "stage": stage,
+            "run_id": run_id,
+            "source": model_uri,
+        }
     
     def compairing_to_find_best_model(self):
         logger.info("Starting model selection and training process...")
@@ -159,8 +212,11 @@ class ModelTraining:
         if experiment and experiment.lifecycle_stage == "deleted":
             client.restore_experiment(experiment.experiment_id)
         mlflow.set_experiment(self.mlflow_experiment)
+        
+        logger.info("Loading and transforming data...")
         transformation = RecommenderDataTransformation(self.config)
-        (X_train, y_train, X_test, y_test, train_df, test_df ) = transformation.run_transformation_pipeline()
+        (X_train, y_train, X_test, y_test, train_df, test_df, preprocessor, feature_cols, num_cols, cate_cols) = transformation.run_transformation_pipeline()
+        logger.info(f"Data shapes - Train: {X_train.shape}, Test: {X_test.shape}")
         
         with mlflow.start_run(run_name="model_compairison") as run:
             mlflow.log_params({
@@ -168,10 +224,13 @@ class ModelTraining:
                 "cf_random_state": self.cf_random_state,
                 "cbf_n_estimators": self.cbf_n_estimators,
                 "cbf_max_depth": self.cbf_max_depth,
-                "cbf_random_state": self.cbf_random_state
+                "cbf_random_state": self.cbf_random_state,
+                "cf_max_rows": self.cf_max_rows
             })
             
+            logger.info("Training CF model...")
             cf_model = self.implementing_cf_model(train_df)
+            logger.info("Evaluating CF model...")
             cf_rmse, cf_mae = self.evaluate_cf_model(cf_model, test_df)
             
             mlflow.log_metrics({
@@ -179,18 +238,22 @@ class ModelTraining:
                 "cf_mae": cf_mae
             })
             
+            logger.info("Logging CF model to MLflow...")
             mlflow.sklearn.log_model(
                 cf_model['svd'],
                 "collaborative_filtering_svd"
             )
             
+            logger.info("Training CBF model...")
             cbf_model = self.implementing_randomforest_cbf(X_train,y_train)
+            logger.info("Evaluating CBF model...")
             cbf_rmse, cbf_mae = self.evaluate_cbf_model(cbf_model, X_test, y_test)
             
             mlflow.log_metrics({
                 "cbf_rmse": cbf_rmse,
                 "cbf_mae": cbf_mae
             })
+            logger.info("Logging CBF model to MLflow...")
             mlflow.sklearn.log_model(
                 cbf_model,
                 "content_based_random_forest"
@@ -211,43 +274,81 @@ class ModelTraining:
             logger.info("Best model selected: %s", best_model_name)
             
             # Retraining the selected model using the complete dataset
+            logger.info("Combining train and test sets for final model...")
             full_interaction = pd.concat(
-                [train_df,test_df],
+                [train_df, test_df],
                 ignore_index=True
             )
-            
-            if best_model_name == "cf":
-                final_model = self.implementing_cf_model(full_interaction)
-                model_bundle = {
-                    "model_type": "collaborative_filtering",
-                    "model": final_model
+
+            logger.info("Training CF model on full dataset (sampled)...")
+            cf_full_model = self.implementing_cf_model(full_interaction)
+            cf_bundle = {
+                "model_type": "collaborative_filtering",
+                "model": cf_full_model,
+                "pred_matrix": cf_full_model["pred_matrix"],
+                "user_means": cf_full_model["user_means"],
+            }
+
+            logger.info("Training CBF model on full dataset...")
+            X_full = (
+                sparse.vstack([X_train, X_test])
+                if sparse.issparse(X_train) or sparse.issparse(X_test)
+                else np.vstack([X_train, X_test])
+            )
+            y_full = np.concatenate([y_train, y_test])
+            cbf_full_model = self.implementing_randomforest_cbf(X_full, y_full)
+            cbf_bundle = {
+                "model_type": "content_based_random_forest",
+                "model": cbf_full_model,
+                "preprocessor": preprocessor,
+                "feature_cols": feature_cols,
+                "num_cols": num_cols,
+                "cate_cols": cate_cols,
+                "target_col": self.config.get("data.target_col", "rating")
+            }
+
+            logger.info("Creating final model bundle...")
+            final_bundle = {
+                "selected_model": best_model_name,
+                "models": {
+                    "cf": cf_bundle,
+                    "cbf": cbf_bundle,
+                },
+                "metadata": {
+                    "project_name": self.config.get("project.name", "mlops_recommendation_system"),
+                    "environment": self.config.get("project.environment", "dev"),
+                    "mlflow_experiment": self.mlflow_experiment,
+                    "mlflow_run_id": run.info.run_id,
                 }
-            else:
-                X_full = (
-                    sparse.vstack([X_train, X_test])
-                    if sparse.issparse(X_train) or sparse.issparse(X_test)
-                    else np.vstack([X_train, X_test])
-                )
-                y_full = np.concatenate([y_train, y_test])
-                final_model = self.implementing_randomforest_cbf(X_full,y_full)
-                model_bundle = {
-                    "model_type": "content_based_random_forest",
-                    "model" : final_model
-                }
-            
-            model_path = self._save_final_model(model_bundle)
+            }
+
+            logger.info("Saving final model...")
+            model_path = self._save_final_model(final_bundle)
             
             mlflow.log_param("selected_model", best_model_name)
             mlflow.log_param("final_model_path", model_path)
             mlflow.log_artifact(model_path, artifact_path="final_model")
+
+            logger.info("Registering model in MLflow...")
+            registry_name = self.config.get("mlflow.model_registry_name", "course_recommendation")
+            target_stage = self.config.get("mlflow.model_stage", "Staging")
+            model_uri = f"runs:/{run.info.run_id}/{best_model_name}"
+            registered_version = self._register_model_version(
+                model_name=registry_name,
+                model_uri=model_uri,
+                run_id=run.info.run_id,
+                stage=target_stage,
+            )
             
             logger.info("Final model saved to: %s", model_path)
+            logger.info("Registered model version: %s", registered_version)
             
             return {
                 "selected_model" : best_model_name,
                 "metrics": results,
                 "model_path": model_path,
-                "mlflow_run_id": run.info.run_id
+                "mlflow_run_id": run.info.run_id,
+                "registered_model": registered_version,
             }
 
 if __name__ == "__main__":

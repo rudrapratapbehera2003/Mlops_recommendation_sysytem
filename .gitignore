@@ -9,6 +9,9 @@ venv/
 env/
 ENV/
 conda-env/
+.env.prod
+.env.staging
+.env.dev
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
