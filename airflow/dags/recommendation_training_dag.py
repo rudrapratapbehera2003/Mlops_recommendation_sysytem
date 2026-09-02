@@ -12,7 +12,7 @@ from src.data.validate import DataValidator
 from src.data.ingest import DataIngestion
 from src.models.train_model import ModelTraining
 from src.config.loader import ConfigLoader
-from src.logging.logger import get_logger
+from src.logger.logger import get_logger
 
 logger = get_logger(__name__)
 

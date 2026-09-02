@@ -48,9 +48,16 @@ def test_register_model_version_promotes_to_staging(monkeypatch):
             return SimpleNamespace()
 
     monkeypatch.setattr("src.models.train_model.MlflowClient", lambda: FakeClient())
-    monkeypatch.setattr("src.models.train_model.mlflow.set_tracking_uri", lambda uri: None)
-    monkeypatch.setattr("src.models.train_model.mlflow.set_experiment", lambda name: None)
-    monkeypatch.setattr("src.models.train_model.mlflow.sklearn.log_model", lambda model, artifact_path: None)
+    monkeypatch.setattr(
+        "src.models.train_model.mlflow.set_tracking_uri", lambda uri: None
+    )
+    monkeypatch.setattr(
+        "src.models.train_model.mlflow.set_experiment", lambda name: None
+    )
+    monkeypatch.setattr(
+        "src.models.train_model.mlflow.sklearn.log_model",
+        lambda model, artifact_path: None,
+    )
 
     version = trainer._register_model_version(
         model_name="course_recommendation",

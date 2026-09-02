@@ -10,7 +10,7 @@ PROJECT_ROOT = "/opt/airflow/project"
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src.logging.logger import get_logger
+from src.logger.logger import get_logger
 
 logger = get_logger(__name__)
 

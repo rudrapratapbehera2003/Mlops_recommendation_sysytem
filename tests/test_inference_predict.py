@@ -25,7 +25,10 @@ def test_load_model_manifest(tmp_path):
     bundle = {
         "selected_model": "content_based_random_forest",
         "models": {
-            "cbf": {"model_type": "content_based_random_forest", "model": {"value": 42}},
+            "cbf": {
+                "model_type": "content_based_random_forest",
+                "model": {"value": 42},
+            },
             "cf": {"model_type": "collaborative_filtering", "model": {"value": 84}},
         },
     }
@@ -51,7 +54,10 @@ def test_predict_recommendations_returns_payload(tmp_path):
                 "preprocessor": DummyPreprocessor(),
                 "feature_cols": ["course_id"],
             },
-            "cf": {"model_type": "collaborative_filtering", "model": {"pred_matrix": None}},
+            "cf": {
+                "model_type": "collaborative_filtering",
+                "model": {"pred_matrix": None},
+            },
         },
     }
     model_path = tmp_path / "dummy_model.joblib"

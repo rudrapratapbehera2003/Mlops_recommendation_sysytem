@@ -1,8 +1,8 @@
 import os
 import re
-import yaml
 from typing import Any, Dict
 
+import yaml
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,7 +18,9 @@ class ConfigLoader:
 
     def _resolve_env_placeholders(self, value: Any) -> Any:
         if isinstance(value, dict):
-            return {key: self._resolve_env_placeholders(item) for key, item in value.items()}
+            return {
+                key: self._resolve_env_placeholders(item) for key, item in value.items()
+            }
         if isinstance(value, list):
             return [self._resolve_env_placeholders(item) for item in value]
         if not isinstance(value, str):
@@ -55,4 +57,3 @@ class ConfigLoader:
 if __name__ == "__main__":
     loader = ConfigLoader()
     print(f"Project Name: {loader.get('project.name')}")
-

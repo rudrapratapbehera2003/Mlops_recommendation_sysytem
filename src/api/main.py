@@ -1,7 +1,7 @@
-from typing import Any, Literal, Optional
 import os
 import time
 from datetime import datetime
+from typing import Any, Literal, Optional
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -18,13 +18,24 @@ app = FastAPI(
 
 class ContentBasedFeaturesRequest(BaseModel):
     """Features required for Content-Based Filtering (RandomForest)"""
-    user_id: int = Field(default=15796, description="User ID to generate recommendations for.", json_schema_extra={"example": 15796})
-    top_n: int = Field(default=5, ge=1, le=20, description="Number of recommendations to return.", json_schema_extra={"example": 5})
+
+    user_id: int = Field(
+        default=15796,
+        description="User ID to generate recommendations for.",
+        json_schema_extra={"example": 15796},
+    )
+    top_n: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of recommendations to return.",
+        json_schema_extra={"example": 5},
+    )
     model_type: Literal["content_based_random_forest"] = Field(
         default="content_based_random_forest",
         description="Content-based model using RandomForest.",
     )
-    
+
     # Required for all features
     course_ids: list[int] = Field(
         default=[9366, 1928, 9541, 3708, 2847],
@@ -32,16 +43,44 @@ class ContentBasedFeaturesRequest(BaseModel):
         json_schema_extra={"example": [9366, 1928, 9541, 3708, 2847]},
     )
     course_names: list[str] = Field(
-        default=["Python for Beginners", "Cybersecurity for Professionals", "DevOps and Continuous Deployment", "Project Management Fundamentals", "Advanced Python"],
+        default=[
+            "Python for Beginners",
+            "Cybersecurity for Professionals",
+            "DevOps and Continuous Deployment",
+            "Project Management Fundamentals",
+            "Advanced Python",
+        ],
         description="Course names for each candidate course.",
-        json_schema_extra={"example": ["Python for Beginners", "Cybersecurity for Professionals", "DevOps and Continuous Deployment", "Project Management Fundamentals", "Advanced Python"]},
+        json_schema_extra={
+            "example": [
+                "Python for Beginners",
+                "Cybersecurity for Professionals",
+                "DevOps and Continuous Deployment",
+                "Project Management Fundamentals",
+                "Advanced Python",
+            ]
+        },
     )
     instructors: list[str] = Field(
-        default=["Emma Harris", "Alexander Young", "Dr. Mia Walker", "Benjamin Lewis", "John Smith"],
+        default=[
+            "Emma Harris",
+            "Alexander Young",
+            "Dr. Mia Walker",
+            "Benjamin Lewis",
+            "John Smith",
+        ],
         description="Instructor names for each candidate course.",
-        json_schema_extra={"example": ["Emma Harris", "Alexander Young", "Dr. Mia Walker", "Benjamin Lewis", "John Smith"]},
+        json_schema_extra={
+            "example": [
+                "Emma Harris",
+                "Alexander Young",
+                "Dr. Mia Walker",
+                "Benjamin Lewis",
+                "John Smith",
+            ]
+        },
     )
-    
+
     # Numerical features
     course_duration_hours: list[float] = Field(
         default=[39.1, 36.3, 13.4, 58.3, 45.2],
@@ -73,12 +112,14 @@ class ContentBasedFeaturesRequest(BaseModel):
         description="Number of previous courses taken by user.",
         json_schema_extra={"example": [4, 9, 4, 6, 5]},
     )
-    
+
     # Categorical features
     difficulty_level: list[str] = Field(
         default=["Beginner", "Beginner", "Beginner", "Beginner", "Intermediate"],
         description="Difficulty level of each candidate course (e.g., 'Beginner', 'Intermediate', 'Advanced').",
-        json_schema_extra={"example": ["Beginner", "Beginner", "Beginner", "Beginner", "Intermediate"]},
+        json_schema_extra={
+            "example": ["Beginner", "Beginner", "Beginner", "Beginner", "Intermediate"]
+        },
     )
     certification_offered: list[str] = Field(
         default=["Yes", "Yes", "Yes", "Yes", "Yes"],
@@ -94,8 +135,19 @@ class ContentBasedFeaturesRequest(BaseModel):
 
 class CollaborativeFilteringRequest(BaseModel):
     """Request for Collaborative Filtering (SVD-based)"""
-    user_id: int = Field(default=2005, description="User ID to generate recommendations for. Must exist in training data.", json_schema_extra={"example": 2005})
-    top_n: int = Field(default=5, ge=1, le=20, description="Number of recommendations to return.", json_schema_extra={"example": 5})
+
+    user_id: int = Field(
+        default=2005,
+        description="User ID to generate recommendations for. Must exist in training data.",
+        json_schema_extra={"example": 2005},
+    )
+    top_n: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of recommendations to return.",
+        json_schema_extra={"example": 5},
+    )
     model_type: Literal["collaborative_filtering"] = Field(
         default="collaborative_filtering",
         description="Collaborative filtering model using TruncatedSVD.",
@@ -116,11 +168,22 @@ class RecommendationResponse(BaseModel):
 
 class DiscoveryRequest(BaseModel):
     """Request for discovering NEW courses based on user preferences."""
-    user_id: int = Field(default=15796, description="User ID", json_schema_extra={"example": 15796})
-    top_n: int = Field(default=5, ge=1, le=20, description="Number of recommendations", json_schema_extra={"example": 5})
-    model_type: Literal["content_based_random_forest", "collaborative_filtering"] = Field(
-        default="collaborative_filtering",
-        description="Recommendation algorithm to use",
+
+    user_id: int = Field(
+        default=15796, description="User ID", json_schema_extra={"example": 15796}
+    )
+    top_n: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of recommendations",
+        json_schema_extra={"example": 5},
+    )
+    model_type: Literal["content_based_random_forest", "collaborative_filtering"] = (
+        Field(
+            default="collaborative_filtering",
+            description="Recommendation algorithm to use",
+        )
     )
     courses_already_taken: list[int] = Field(
         default=[9366, 1928],
@@ -208,7 +271,7 @@ def get_metrics():
 
 @app.post("/recommend/content-based", response_model=RecommendationResponse)
 def recommend_content_based(payload: ContentBasedFeaturesRequest):
-    
+
     start_time = time.time()
     try:
         candidate_features = []
@@ -229,7 +292,7 @@ def recommend_content_based(payload: ContentBasedFeaturesRequest):
                 "study_material_available": payload.study_material_available[i],
             }
             candidate_features.append(feature_dict)
-        
+
         result = predict_recommendations(
             user_id=payload.user_id,
             top_n=payload.top_n,
@@ -250,12 +313,14 @@ def recommend_content_based(payload: ContentBasedFeaturesRequest):
     except Exception as exc:
         response_time_ms = (time.time() - start_time) * 1000
         metrics.record_request(success=False, response_time_ms=response_time_ms)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {str(exc)}"
+        ) from exc
 
 
 @app.post("/recommend/collaborative", response_model=RecommendationResponse)
 def recommend_collaborative(payload: CollaborativeFilteringRequest):
-    
+
     start_time = time.time()
     try:
         result = predict_recommendations(
@@ -278,7 +343,9 @@ def recommend_collaborative(payload: CollaborativeFilteringRequest):
     except Exception as exc:
         response_time_ms = (time.time() - start_time) * 1000
         metrics.record_request(success=False, response_time_ms=response_time_ms)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {str(exc)}"
+        ) from exc
 
 
 @app.post("/discover", response_model=RecommendationResponse)
@@ -292,20 +359,22 @@ def discover_new_courses(payload: DiscoveryRequest):
             for _, row in course_df.drop_duplicates(subset=["course_id"]).iterrows():
                 if int(row["course_id"]) in payload.courses_already_taken:
                     continue
-                all_courses.append({
-                    "course_id": int(row["course_id"]),
-                    "course_name": row["course_name"],
-                    "instructor": row["instructor"],
-                    "course_duration_hours": float(row["course_duration_hours"]),
-                    "certification_offered": row["certification_offered"],
-                    "difficulty_level": row["difficulty_level"],
-                    "enrollment_numbers": int(row["enrollment_numbers"]),
-                    "course_price": float(row["course_price"]),
-                    "feedback_score": float(row["feedback_score"]),
-                    "study_material_available": row["study_material_available"],
-                    "time_spent_hours": float(row["time_spent_hours"]),
-                    "previous_courses_taken": int(payload.previous_courses_taken),
-                })
+                all_courses.append(
+                    {
+                        "course_id": int(row["course_id"]),
+                        "course_name": row["course_name"],
+                        "instructor": row["instructor"],
+                        "course_duration_hours": float(row["course_duration_hours"]),
+                        "certification_offered": row["certification_offered"],
+                        "difficulty_level": row["difficulty_level"],
+                        "enrollment_numbers": int(row["enrollment_numbers"]),
+                        "course_price": float(row["course_price"]),
+                        "feedback_score": float(row["feedback_score"]),
+                        "study_material_available": row["study_material_available"],
+                        "time_spent_hours": float(row["time_spent_hours"]),
+                        "previous_courses_taken": int(payload.previous_courses_taken),
+                    }
+                )
             result = predict_recommendations(
                 user_id=payload.user_id,
                 top_n=payload.top_n,
@@ -317,7 +386,15 @@ def discover_new_courses(payload: DiscoveryRequest):
                 user_id=payload.user_id,
                 top_n=payload.top_n,
                 model_type="collaborative_filtering",
-                candidate_course_ids=[course_id for course_id in pd.read_csv("data/processed/engineered_recommend_data.csv")["course_id"].drop_duplicates().tolist() if course_id not in payload.courses_already_taken],
+                candidate_course_ids=[
+                    course_id
+                    for course_id in pd.read_csv(
+                        "data/processed/engineered_recommend_data.csv"
+                    )["course_id"]
+                    .drop_duplicates()
+                    .tolist()
+                    if course_id not in payload.courses_already_taken
+                ],
             )
 
         response_time_ms = (time.time() - start_time) * 1000
@@ -326,15 +403,21 @@ def discover_new_courses(payload: DiscoveryRequest):
     except FileNotFoundError as exc:
         response_time_ms = (time.time() - start_time) * 1000
         metrics.record_request(success=False, response_time_ms=response_time_ms)
-        raise HTTPException(status_code=404, detail=f"Model or data not found: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Model or data not found: {str(exc)}"
+        ) from exc
     except ValueError as exc:
         response_time_ms = (time.time() - start_time) * 1000
         metrics.record_request(success=False, response_time_ms=response_time_ms)
-        raise HTTPException(status_code=400, detail=f"Invalid request: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=400, detail=f"Invalid request: {str(exc)}"
+        ) from exc
     except Exception as exc:
         response_time_ms = (time.time() - start_time) * 1000
         metrics.record_request(success=False, response_time_ms=response_time_ms)
-        raise HTTPException(status_code=500, detail=f"Recommendation failed: {str(exc)}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Recommendation failed: {str(exc)}"
+        ) from exc
 
 
 @app.post("/recommend", response_model=RecommendationResponse, deprecated=True)
