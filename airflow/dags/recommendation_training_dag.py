@@ -1,22 +1,7 @@
-"""
-Airflow DAG for MLOps Recommendation System Training Pipeline
-
-This DAG orchestrates:
-1. Data validation and ingestion
-2. Model training (Content-Based Filtering + Collaborative Filtering)
-3. Model evaluation
-4. Model registration in MLflow
-5. Model deployment notification
-"""
-
-import os
 import sys
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.models import Variable
-from airflow.utils.decorators import apply_defaults
 
 # Add project root to path
 PROJECT_ROOT = "/opt/airflow/project"
@@ -38,7 +23,7 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
     'start_date': datetime(2024, 1, 1),
     'email_on_failure': True,
-    'email': ['mlops@example.com'],
+    'email': ['rpbehera167@gmail.com'],
 }
 
 # DAG definition
@@ -120,6 +105,7 @@ def train_model_task(**context):
 
 def model_registry_task(**context):
     """Register trained model in MLflow."""
+    
     logger.info("Starting model registry task...")
     try:
         best_model = context['ti'].xcom_pull(key='best_model', task_ids='train_model')
@@ -205,5 +191,5 @@ notification = PythonOperator(
     provide_context=True,
 )
 
-# Set task dependencies
-validate_data >> ingest_data >> train_model >> model_registry >> notification
+# Ingestion creates the processed file consumed by validation.
+ingest_data >> validate_data >> train_model >> model_registry >> notification

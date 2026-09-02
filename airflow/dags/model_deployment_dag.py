@@ -1,14 +1,3 @@
-"""
-Deployment DAG for Model Promotion and Rollout
-
-This DAG handles:
-1. Pulling latest model from model registry
-2. Running integration tests
-3. Deploying to staging/production
-4. Monitoring model performance
-5. Rollback on failures
-"""
-
 import os
 import sys
 from datetime import datetime, timedelta

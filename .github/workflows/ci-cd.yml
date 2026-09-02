@@ -2,9 +2,9 @@ name: MLOps Recommendation Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, development ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, development ]
 
 jobs:
   lint-and-test:
@@ -29,7 +29,7 @@ jobs:
     
     - name: Lint with pylint
       run: |
-        pylint src/ --disable=all --enable=E,F
+        pylint src/ --disable=all --enable=E,F --init-hook="import sys; sys.path.insert(0, '${{ github.workspace }}')"
     
     - name: Format check with black
       run: |
@@ -52,7 +52,7 @@ jobs:
   build-docker:
     needs: lint-and-test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development'
     
     steps:
     - uses: actions/checkout@v3

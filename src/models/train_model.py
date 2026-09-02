@@ -14,7 +14,6 @@ from src.config.loader import ConfigLoader
 from src.data.data_transformation import RecommenderDataTransformation
 from sklearn.decomposition import TruncatedSVD
 from sklearn.ensemble import RandomForestRegressor
-from src.data.data_transformation import RecommenderDataTransformation
 from sklearn.metrics import mean_absolute_error, mean_squared_error, root_mean_squared_error
 
 
@@ -182,6 +181,9 @@ class ModelTraining:
         try:
             registered_model = client.get_registered_model(model_name)
         except mlflow.exceptions.RestException:
+            registered_model = None
+
+        if registered_model is None:
             client.create_registered_model(model_name)
 
         model_version = client.create_model_version(
