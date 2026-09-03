@@ -1,10 +1,10 @@
 import os
 import sys
+import json
+import urllib.request
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.models import Variable
 
 PROJECT_ROOT = "/opt/airflow/project"
 if PROJECT_ROOT not in sys.path:
@@ -14,6 +14,28 @@ from src.logger.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def _mlflow_client():
+    import mlflow
+    from mlflow.tracking import MlflowClient
+
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+    mlflow.set_tracking_uri(tracking_uri)
+    return MlflowClient(tracking_uri=tracking_uri)
+
+
+def _api_request(path, method="GET", payload=None):
+    api_url = os.getenv("API_URL", "http://api:8000").rstrip("/")
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        f"{api_url}{path}",
+        data=body,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
 # Default arguments
 default_args = {
     'owner': 'mlops-recommendation-team',
@@ -21,6 +43,7 @@ default_args = {
     'retry_delay': timedelta(minutes=10),
     'start_date': datetime(2024, 1, 1),
     'email_on_failure': True,
+    'email': ['rpbehera167@gmail.com']
 }
 
 # DAG definition
@@ -35,123 +58,125 @@ deployment_dag = DAG(
 
 
 def check_model_quality_task(**context):
-    """Check model quality metrics before deployment."""
     logger.info("Checking model quality metrics...")
-    try:
-        # Get model metrics from previous training run
-        model_metrics = {
-            'cbf_rmse': 0.5,  # Should be fetched from MLflow
-            'cbf_mae': 0.4,
-            'cf_rmse': 0.6,
-            'cf_mae': 0.45,
-        }
-        
-        # Define thresholds
-        thresholds = {
-            'cbf_rmse': 1.0,
-            'cbf_mae': 0.8,
-            'cf_rmse': 1.2,
-            'cf_mae': 1.0,
-        }
-        
-        # Check if metrics pass thresholds
-        passed = all(model_metrics[k] <= thresholds[k] for k in model_metrics)
-        
-        context['ti'].xcom_push(key='quality_check', value='passed' if passed else 'failed')
-        logger.info(f"Quality check: {'PASSED' if passed else 'FAILED'}")
-        
-        return {'status': 'passed' if passed else 'failed', 'metrics': model_metrics}
-    except Exception as e:
-        logger.error(f"Quality check failed: {str(e)}")
-        raise
+    from src.config.loader import ConfigLoader
+
+    config = ConfigLoader()
+    client = _mlflow_client()
+    experiment_name = config.get("mlflow.experiment_name", "course_recommendation.dev")
+    experiment = client.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        raise ValueError(f"MLflow experiment does not exist: {experiment_name}")
+
+    runs = client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["attribute.start_time DESC"],
+        max_results=1,
+    )
+    if not runs:
+        raise ValueError("No completed MLflow training run was found.")
+
+    run = runs[0]
+    metrics = run.data.metrics
+    thresholds = {
+        "cbf_rmse": 1.0,
+        "cbf_mae": 0.8,
+        "cf_rmse": 1.2,
+        "cf_mae": 1.0,
+    }
+    missing = [name for name in thresholds if name not in metrics]
+    if missing:
+        raise ValueError(f"Latest MLflow run is missing metrics: {missing}")
+    failed = {
+        name: metrics[name]
+        for name, threshold in thresholds.items()
+        if metrics[name] > threshold
+    }
+    if failed:
+        raise ValueError(f"Model quality thresholds failed: {failed}")
+
+    context["ti"].xcom_push(key="run_id", value=run.info.run_id)
+    context["ti"].xcom_push(key="quality_check", value="passed")
+    logger.info("Quality check passed for MLflow run %s: %s", run.info.run_id, metrics)
+    return {"status": "passed", "run_id": run.info.run_id, "metrics": metrics}
 
 
 def run_integration_tests_task(**context):
-    """Run integration tests with the new model."""
+
     logger.info("Running integration tests...")
-    try:
-        # Run test suite
-        test_result = {
-            'status': 'passed',
-            'tests_run': 42,
-            'tests_passed': 42,
-            'tests_failed': 0,
-        }
-        
-        context['ti'].xcom_push(key='integration_tests', value='passed')
-        logger.info(f"Integration tests completed: {test_result['tests_passed']}/{test_result['tests_run']} passed")
-        
-        return test_result
-    except Exception as e:
-        logger.error(f"Integration tests failed: {str(e)}")
-        context['ti'].xcom_push(key='integration_tests', value='failed')
-        raise
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/", "-q"],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.error(result.stdout)
+        logger.error(result.stderr)
+        raise RuntimeError("Project integration tests failed.")
+    context["ti"].xcom_push(key="integration_tests", value="passed")
+    return {"status": "passed", "output": result.stdout[-2000:]}
 
 
 def deploy_to_staging_task(**context):
     """Deploy model to staging environment."""
     logger.info("Deploying model to staging...")
-    try:
-        staging_url = "http://staging-api.example.com"
-        logger.info(f"Model deployed to staging: {staging_url}")
-        
-        context['ti'].xcom_push(key='staging_deployment', value='completed')
-        return {'status': 'deployed', 'url': staging_url}
-    except Exception as e:
-        logger.error(f"Staging deployment failed: {str(e)}")
-        raise
+    from src.config.loader import ConfigLoader
+
+    config = ConfigLoader()
+    model_name = config.get("mlflow.model_registry_name", "course_recommendation")
+    run_id = context["ti"].xcom_pull(key="run_id", task_ids="check_model_quality")
+    client = _mlflow_client()
+    versions = client.search_model_versions(f"name='{model_name}'")
+    matching = [version for version in versions if version.run_id == run_id]
+    if not matching:
+        raise ValueError(f"No registered version found for MLflow run {run_id}.")
+    version = max(matching, key=lambda item: int(item.version))
+    if version.current_stage.lower() != "staging":
+        raise ValueError(
+            f"Model version {version.version} is not in Staging: {version.current_stage}"
+        )
+    context["ti"].xcom_push(key="model_version", value=version.version)
+    context["ti"].xcom_push(key="staging_deployment", value="completed")
+    return {"status": "deployed", "model_name": model_name, "version": version.version}
 
 
 def run_smoke_tests_task(**context):
     """Run smoke tests against staging deployment."""
     logger.info("Running smoke tests on staging...")
-    try:
-        smoke_test_results = {
-            'health_check': True,
-            'recommendation_endpoint': True,
-            'performance_ok': True,
-            'latency_ms': 45.2,
-        }
-        
-        all_passed = all(smoke_test_results.values())
-        context['ti'].xcom_push(key='smoke_tests', value='passed' if all_passed else 'failed')
-        logger.info(f"Smoke tests: {'PASSED' if all_passed else 'FAILED'}")
-        
-        return smoke_test_results
-    except Exception as e:
-        logger.error(f"Smoke tests failed: {str(e)}")
-        raise
+    health = _api_request("/health")
+    if health.get("status") != "ok":
+        raise RuntimeError(f"API health check failed: {health}")
+    recommendation = _api_request(
+        "/recommend/content-based",
+        method="POST",
+        payload={"user_id": 15796, "top_n": 1},
+    )
+    if not isinstance(recommendation.get("recommendations"), list):
+        raise RuntimeError("Recommendation smoke test returned an invalid payload.")
+    context["ti"].xcom_push(key="smoke_tests", value="passed")
+    return {"status": "passed", "health": health, "recommendation": recommendation}
 
 
 def deploy_to_production_task(**context):
     """Deploy model to production environment."""
     logger.info("Deploying model to production...")
-    try:
-        production_url = "http://api.example.com"
-        logger.info(f"Model deployed to production: {production_url}")
-        
-        context['ti'].xcom_push(key='production_deployment', value='completed')
-        return {'status': 'deployed', 'url': production_url}
-    except Exception as e:
-        logger.error(f"Production deployment failed: {str(e)}")
-        raise
+    smoke_status = context["ti"].xcom_pull(key="smoke_tests", task_ids="run_smoke_tests")
+    if smoke_status != "passed":
+        raise ValueError("Production promotion blocked because smoke tests did not pass.")
+    context["ti"].xcom_push(key="production_deployment", value="completed")
+    return {"status": "promoted", "model_version": context["ti"].xcom_pull(key="model_version", task_ids="deploy_to_staging")}
 
 
 def monitor_model_performance_task(**context):
     """Monitor deployed model performance."""
     logger.info("Monitoring model performance...")
-    try:
-        performance_metrics = {
-            'prediction_latency_ms': 42.5,
-            'error_rate': 0.01,
-            'user_satisfaction': 4.7,
-        }
-        
-        logger.info(f"Performance metrics: {performance_metrics}")
-        return {'status': 'monitored', 'metrics': performance_metrics}
-    except Exception as e:
-        logger.error(f"Performance monitoring failed: {str(e)}")
-        raise
+    metrics = _api_request("/metrics")
+    logger.info("API performance metrics: %s", metrics)
+    return {"status": "monitored", "metrics": metrics}
 
 
 # Define tasks
