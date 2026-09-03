@@ -37,7 +37,9 @@ services:
       - ./mlartifacts:/mlartifacts
 
   airflow-webserver:
-    image: apache/airflow:2.9.1-python3.11
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
     container_name: course-recommendation-airflow-webserver
     depends_on:
       - mlflow
@@ -48,6 +50,9 @@ services:
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-}
       AIRFLOW__CORE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       PYTHONPATH: ${PYTHONPATH:-/opt/airflow/project}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI_DOCKER:-http://mlflow:5000}
+      MLFLOW_ARTIFACT_URI: ${MLFLOW_ARTIFACT_URI:-/mlartifacts}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-course_recommendation.dev}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
@@ -59,7 +64,9 @@ services:
     command: -c "airflow db init && exec airflow webserver"
 
   airflow-scheduler:
-    image: apache/airflow:2.9.1-python3.11
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
     container_name: course-recommendation-airflow-scheduler
     depends_on:
       - airflow-webserver
@@ -70,6 +77,9 @@ services:
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-}
       AIRFLOW__CORE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       PYTHONPATH: ${PYTHONPATH:-/opt/airflow/project}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI_DOCKER:-http://mlflow:5000}
+      MLFLOW_ARTIFACT_URI: ${MLFLOW_ARTIFACT_URI:-/mlartifacts}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-course_recommendation.dev}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs

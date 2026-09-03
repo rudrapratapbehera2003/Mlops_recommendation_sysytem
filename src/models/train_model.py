@@ -344,7 +344,13 @@ class ModelTraining:
                 "mlflow.model_registry_name", "course_recommendation"
             )
             target_stage = self.config.get("mlflow.model_stage", "Staging")
-            model_uri = f"runs:/{run.info.run_id}/{best_model_name}"
+            model_artifact_paths = {
+                "cf": "collaborative_filtering_svd",
+                "cbf": "content_based_random_forest",
+            }
+            model_uri = (
+                f"runs:/{run.info.run_id}/" f"{model_artifact_paths[best_model_name]}"
+            )
             registered_version = self._register_model_version(
                 model_name=registry_name,
                 model_uri=model_uri,
